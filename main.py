@@ -30,12 +30,12 @@ def censore(text: str) -> bool:
 
 
 def show_menu(chat_id: int) -> None:
-    menu_text = (
-        "Виберіть опцію:\n"
-        "/menu - повернення до головного меню\n"
-        "/message - Відправити повідомлення\n"
-        "/anonymous_message - Відправити анонімне повідомлення\n"
-        "/feedback - зворотній зв'язок для команди\n"
+    menu_text = (r"Основний канал: @KSEgossip \n"
+        r"Виберіть опцію:\n"
+        r"/menu - повернення до головного меню\n"
+        r"/message - Відправити повідомлення\n"
+        r"/anonymous_message - Відправити анонімне повідомлення\n"
+        r"/feedback - зворотній зв'язок для команди\n"
     )
     bot.send_message(chat_id, menu_text)
 
