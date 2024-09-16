@@ -4,8 +4,9 @@ import json
 import csv
 import re
 import time
-import pandas as pd
-from telebot.types import Update
+from telegram import Update
+from telegram.ext import Updater, MessageHandler, CallbackContext
+
 
 tb.apihelper.Timeout = 24 * 60 * 60
 
@@ -15,6 +16,7 @@ chanel_id = config.get('chanel_id')
 feedback_path = config.get('feedback_path')
 feedback_chanel = config.get('feedback_chanel')
 admin_id = config.get('admin_id')
+admin_id = map(int, admin_id)
 user_status = {}
 last_message_time = {}
 
@@ -23,7 +25,8 @@ def censore(text: str) -> bool:
         bad_words = {word.strip().lower() for word in bad_file}
     text = re.sub(r'[^\w\s]', '', text)
     words = text.lower().split()
-
+    if text.__contains__("ы"):
+        return False
     for word in words:
         if word in bad_words:
             return False
@@ -44,7 +47,7 @@ def update_ban_list(ban_user_list):
 
 def check_user_ban(user_id) -> None:
     ban_user_list = read_ban_list()
-    if user_id in ban_user_list:
+    if str(user_id) in ban_user_list:
         return False
     else:
         return True
@@ -53,12 +56,14 @@ def show_menu(chat_id: int) -> None:
     menu_text = ("Основний канал: @KSEgossip \n"
                  "Виберіть опцію:\n"
                  "/menu - повернення до головного меню\n"
-                 "/message - Відправити повідомлення\n"
                  "/anonymous_message - Відправити анонімне повідомлення\n"
                  "/feedback - зворотній зв'язок для команди\n"
                  )
     bot.send_message(chat_id, menu_text)
 
+@bot.message_handler(commands=['info'])
+def echo(message) -> None:
+    bot.reply_to(message, message)
 @bot.message_handler(commands=["menu"])
 def menu(message) -> None:
     user_status[message.from_user.id] = 'menu'
@@ -83,40 +88,27 @@ def main(message) -> None:
 
 @bot.message_handler(commands=["reboot"])
 def echo(message) -> None:
-    if message.from_user.id == int(admin_id):
+    if message.from_user.id in admin_id:
         bot.send_message(chanel_id, "Teхнічні роботи")
         bot.reply_to(message, "Reboot, Success")
         exit()
     else:
         bot.reply_to(message, text="Не достатньо прав")
-@bot.message_handler(commands="banhammer")
-def echo(message) -> None:
-    if message.from_user.id == int(admin_id):
-        bot.reply_to(message, "Кому банхаммер")
-        with open("ban_users.txt", "+") as ban_user_file:
-            ban_user = ban_user_file.readlines()
-            for user in ban_user:
-                if user == int(message.text):
-                    bot.repy_to(message, f"{message.text} allready banned")
-            else:
-                 bot.repy_to(message, f"{message.text} is banned")
 
-
-@bot.message_handler(commands="banhammer")
+@bot.message_handler(commands=["banhammer"])
 def ban_user(message) -> None:
-    if message.from_user.id == int(admin_id):
-        bot.reply_to(message, "Кому банхаммер?")
-
+    if message.from_user.id in admin_id:
+        ban_name = message.text[10:].rstrip(" ").lstrip(" ")
         ban_user_list = read_ban_list()
 
-        if message.text in ban_user_list:
-            bot.reply_to(message, f"{message.text} already banned")
+        if ban_name in ban_user_list:
+            bot.reply_to(message, f"{ban_name} already banned")
         else:
-            ban_user_list.append(message.text)
+            ban_user_list.append(ban_name)
             update_ban_list(ban_user_list)
-            bot.reply_to(message, f"{message.text} is banned")
+            bot.reply_to(message, f"{ban_name} is banned")
 
-@bot.message_handler()
+@bot.message_handler(content_types=['text', 'animation', 'sticker'])
 def echo(message) -> None:
     current_time = dt.datetime.now()
     last_time = last_message_time.get(message.from_user.id)
@@ -132,12 +124,18 @@ def echo(message) -> None:
             show_menu(message.chat.id)
         elif user_status.get(message.from_user.id) == "anonymous_message":
             user_status.pop(message.from_user.id, None)
-            if censore(message.text):
-                bot.send_message(feedback_chanel, f"{message.text}\n {message.from_user.id},\n #message")
-                bot.send_message(chanel_id, f"{message.text}\nвід анонімного користувача")
+            if message.animation:
+                bot.send_animation(feedback_chanel,text=f"{message.from_user.id}", animation=message.animation.file_id)
+                bot.send_animation(chanel_id, animation=message.animation.file_id)
+            elif message.sticker:
+                bot.send_sticker(feedback_chanel,text=f"{message.from_user.id}", sticker=message.sticker.file_id)
+                bot.send_sticker(chanel_id, sticker=message.sticker.file_id)
             else:
-                bot.reply_to(message, f"підбирай слова")
-            show_menu(message.chat.id)
+                if censore(message.text):
+                    bot.send_message(feedback_chanel, f"{message.text}\n {message.from_user.id},\n #message")
+                    bot.send_message(chanel_id, f"{message.text}\nвід анонімного користувача")
+                else:
+                    bot.reply_to(message, f"підбирай слова")
         elif user_status.get(message.from_user.id) == "feedback":
             feedback = {
                 "message": message.text,
@@ -152,9 +150,8 @@ def echo(message) -> None:
                                                    f"#feedback")
             bot.reply_to(message, "Дякуємо за ваш відгук!")
             user_status[message.from_user.id] = "menu"
-            show_menu(message.chat.id)
     else:
-        bot.reply_to(message, "На жаль вам не доступна можливість надсилати повідомлення")
+        bot.reply_to(message, "На жаль, вам не доступна можливість надсилати повідомлення")
 def run_bot():
     while True:
         try:

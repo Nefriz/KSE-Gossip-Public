@@ -3,5 +3,5 @@
   "chanel_id": "@KSEgossip",
   "feedback_path": "feedback-data.csv",
   "feedback_chanel": "@mybotfeedbackforuni",
-  "admin_id": 690519918
+  "admin_id": [690519918, 461395621]
 }
