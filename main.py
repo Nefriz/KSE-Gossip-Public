@@ -16,14 +16,10 @@ feedback_path = config.get('feedback_path')
 feedback_chanel = config.get('feedback_chanel')
 admin_id = config.get('admin_id')
 user_status = {}
-last_message_time = {}  # Dictionary to track the last message time for each user
-
-print(user_status)
-
-users = pd.read_csv("users.csv", encoding="utf-8")
+last_message_time = {}
 
 def censore(text: str) -> bool:
-    with open("bad_words.txt", 'r', encoding='utf-8') as bad_file:
+    with open("bad_words.txt", 'r', encoding='ISO-8859-1') as bad_file:
         bad_words = {word.strip().lower() for word in bad_file}
     text = re.sub(r'[^\w\s]', '', text)
     words = text.lower().split()
@@ -32,6 +28,26 @@ def censore(text: str) -> bool:
         if word in bad_words:
             return False
     return True
+
+def read_ban_list():
+    try:
+        with open("ban_users.txt", "r") as ban_user_file:
+            return [line.strip() for line in ban_user_file.readlines()]
+    except FileNotFoundError:
+        return []  # Return an empty list if the file doesn't exist
+
+def update_ban_list(ban_user_list):
+    with open("ban_users.txt", "w") as ban_user_file:
+        for user in ban_user_list:
+            ban_user_file.write(f"{user}\n")
+
+
+def check_user_ban(user_id) -> None:
+    ban_user_list = read_ban_list()
+    if user_id in ban_user_list:
+        return False
+    else:
+        return True
 
 def show_menu(chat_id: int) -> None:
     menu_text = ("Основний канал: @KSEgossip \n"
@@ -43,40 +59,6 @@ def show_menu(chat_id: int) -> None:
                  )
     bot.send_message(chat_id, menu_text)
 
-def save_feedback_to_csv(feedback_dict: dict) -> None:
-    with open(feedback_path, mode='a', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow([
-            feedback_dict["user_id"],
-            feedback_dict["user_name"],
-            feedback_dict["user_full_name"],
-            feedback_dict["message"],
-            dt.datetime.now().strftime("%Y-%m-%d %H:%M")
-        ])
-
-def update_user(column, column_change, index, new_status):
-    users.loc[users[column] == index, column_change] = new_status
-    users.to_csv('users.csv', index=False)
-
-def message_csv(user_id, message_text):
-    message_df = pd.read_csv('User_massages.csv')
-    message_df = message_df.append({'user_id': user_id, 'message_text': message_text}, ignore_index=True)
-    message_df.to_csv('User_massages.csv', index=False)
-
-@bot.message_handler(commands=['add_badword'])
-def echo(message) -> None:
-    print(message.from_user.id)
-    if message.from_user.id == int(admin_id):
-        new_word = message.text.replace('/add_badword', '').strip()
-        with open("bad_words.txt", 'r') as file:
-            words = file.read()
-        words += ' ' + new_word
-        with open("bad_words.txt", 'w') as file:
-            file.write(words)
-        bot.reply_to(message, text=f"Word '{new_word}' added to the bad words list.")
-    else:
-        bot.reply_to(message, text="Не достатній рівень доступу")
-
 @bot.message_handler(commands=["menu"])
 def menu(message) -> None:
     user_status[message.from_user.id] = 'menu'
@@ -86,11 +68,6 @@ def menu(message) -> None:
 def feedback(message) -> None:
     user_status[message.from_user.id] = "feedback"
     bot.send_message(message.chat.id, "Готові вислуховувати тебе")
-
-@bot.message_handler(commands=["message"])
-def message_handler(message) -> None:
-    user_status[message.from_user.id] = "message"
-    bot.send_message(message.chat.id, "Впишіть текст повідомлення")
 
 @bot.message_handler(commands=["anonymous_message"])
 def anonymous_message(message) -> None:
@@ -104,25 +81,40 @@ def main(message) -> None:
     bot.send_message(message.chat.id, text="Цей бот створений для поширення думок без засудження\n")
     show_menu(message.chat.id)
 
-@bot.message_handler(commands=['give_my_info'])
-def echo(message) -> None:
-    bot.reply_to(message, text=message)
-
-@bot.message_handler(commands=['ban_user'])
+@bot.message_handler(commands=["reboot"])
 def echo(message) -> None:
     if message.from_user.id == int(admin_id):
-        bot.reply_to(message, text="Enter user ID")
-
-        @bot.message_handler(func=lambda m: True)
-        def get_user_id(m):
-            try:
-                user_id = int(m.text)
-                update_user("user_id", "ban_status", user_id, True)
-                bot.reply_to(m, text=f"User {user_id} banned successfully.")
-            except ValueError:
-                bot.reply_to(m, text="Invalid user ID. Please enter a valid number.")
+        bot.send_message(chanel_id, "Teхнічні роботи")
+        bot.reply_to(message, "Reboot, Success")
+        exit()
     else:
-        bot.reply_to(message, text="Не достатній рівень доступу")
+        bot.reply_to(message, text="Не достатньо прав")
+@bot.message_handler(commands="banhammer")
+def echo(message) -> None:
+    if message.from_user.id == int(admin_id):
+        bot.reply_to(message, "Кому банхаммер")
+        with open("ban_users.txt", "+") as ban_user_file:
+            ban_user = ban_user_file.readlines()
+            for user in ban_user:
+                if user == int(message.text):
+                    bot.repy_to(message, f"{message.text} allready banned")
+            else:
+                 bot.repy_to(message, f"{message.text} is banned")
+
+
+@bot.message_handler(commands="banhammer")
+def ban_user(message) -> None:
+    if message.from_user.id == int(admin_id):
+        bot.reply_to(message, "Кому банхаммер?")
+
+        ban_user_list = read_ban_list()
+
+        if message.text in ban_user_list:
+            bot.reply_to(message, f"{message.text} already banned")
+        else:
+            ban_user_list.append(message.text)
+            update_ban_list(ban_user_list)
+            bot.reply_to(message, f"{message.text} is banned")
 
 @bot.message_handler()
 def echo(message) -> None:
@@ -135,42 +127,34 @@ def echo(message) -> None:
         return
 
     last_message_time[message.from_user.id] = current_time
-
-    if message.from_user.id not in user_status.keys():
-        show_menu(message.chat.id)
-    elif user_status.get(message.from_user.id) == 'message':
-        user_status.pop(message.from_user.id, None)
-        if censore(message.text):
-            message_csv(message.from_user.id, message.text)
-            bot.send_message(chanel_id, f"{message.text}\nвід @{message.from_user.username}")
-        else:
-            bot.reply_to(message, f"підбирай слова")
-        show_menu(message.chat.id)
-    elif user_status.get(message.from_user.id) == "anonymous_message":
-        user_status.pop(message.from_user.id, None)
-        if censore(message.text):
-            message_csv(message.from_user.id, message.text)
-            bot.send_message(feedback_chanel, f"{message.from_user.id}\n{message.text}\n")
-            bot.send_message(chanel_id, f"{message.text}\nвід анонімного користувача")
-        else:
-            bot.reply_to(message, f"підбирай слова")
-        show_menu(message.chat.id)
-    elif user_status.get(message.from_user.id) == "feedback":
-        feedback = {
-            "message": message.text,
-            "user_id": message.from_user.id,
-            "user_name": message.from_user.username,
-            "user_full_name": message.from_user.first_name + " " + (message.from_user.last_name or "")
-        }
-        bot.send_message(feedback_chanel, text=f"{feedback['user_id']}\n"
-                                               f"{feedback['user_name']}\n"
-                                               f"{feedback['user_full_name']}, "
-                                               f"{feedback['message']}")
-        save_feedback_to_csv(feedback)
-        bot.reply_to(message, "Дякуємо за ваш відгук!")
-        user_status[message.from_user.id] = "menu"
-        show_menu(message.chat.id)
-
+    if check_user_ban(int(message.from_user.id)):
+        if message.from_user.id not in user_status.keys():
+            show_menu(message.chat.id)
+        elif user_status.get(message.from_user.id) == "anonymous_message":
+            user_status.pop(message.from_user.id, None)
+            if censore(message.text):
+                bot.send_message(feedback_chanel, f"{message.text}\n {message.from_user.id},\n #message")
+                bot.send_message(chanel_id, f"{message.text}\nвід анонімного користувача")
+            else:
+                bot.reply_to(message, f"підбирай слова")
+            show_menu(message.chat.id)
+        elif user_status.get(message.from_user.id) == "feedback":
+            feedback = {
+                "message": message.text,
+                "user_id": message.from_user.id,
+                "user_name": message.from_user.username,
+                "user_full_name": message.from_user.first_name + " " + (message.from_user.last_name or "")
+            }
+            bot.send_message(feedback_chanel, text=f"{feedback['user_id']}\n"
+                                                   f"{feedback['user_name']}\n"
+                                                   f"{feedback['user_full_name']}, "
+                                                   f"{feedback['message']},"
+                                                   f"#feedback")
+            bot.reply_to(message, "Дякуємо за ваш відгук!")
+            user_status[message.from_user.id] = "menu"
+            show_menu(message.chat.id)
+    else:
+        bot.reply_to(message, "На жаль вам не доступна можливість надсилати повідомлення")
 def run_bot():
     while True:
         try:
